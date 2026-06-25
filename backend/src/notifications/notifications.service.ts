@@ -9,7 +9,10 @@ export class NotificationsService {
   private resend: Resend;
 
   constructor(private prisma: PrismaService, private configService: ConfigService) {
-    this.resend = new Resend(this.configService.get('RESEND_API_KEY', ''));
+    const apiKey = this.configService.get<string>('RESEND_API_KEY');
+    if (apiKey) {
+      this.resend = new Resend(apiKey);
+    }
   }
 
   async create(data: {
@@ -46,6 +49,7 @@ export class NotificationsService {
   }
 
   async sendEmail(to: string, subject: string, html: string) {
+    if (!this.resend) return;
     try {
       await this.resend.emails.send({
         from: this.configService.get('FROM_EMAIL', 'noreply@papikondalu.com'),
