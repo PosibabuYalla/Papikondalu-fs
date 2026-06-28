@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
-import { CreateBookingDto, CancelBookingDto } from './dto/booking.dto';
+import { CreateBookingDto, AgentCreateBookingDto, CancelBookingDto } from './dto/booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -19,6 +19,27 @@ export class BookingsController {
   @ApiOperation({ summary: 'Create a new booking' })
   create(@CurrentUser() user: any, @Body() dto: CreateBookingDto) {
     return this.bookingsService.create(user.id, dto);
+  }
+
+  // Agent routes
+  @Post('agent')
+  @UseGuards(RolesGuard)
+  @Roles(Role.AGENT)
+  @ApiOperation({ summary: 'Agent books a ticket for an offline passenger' })
+  agentCreate(@CurrentUser() user: any, @Body() dto: AgentCreateBookingDto) {
+    return this.bookingsService.createAgentBooking(user.id, dto);
+  }
+
+  @Get('agent/my')
+  @UseGuards(RolesGuard)
+  @Roles(Role.AGENT)
+  @ApiOperation({ summary: 'Agent views their own bookings' })
+  getAgentBookings(
+    @CurrentUser() user: any,
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+  ) {
+    return this.bookingsService.findAgentBookings(user.id, page, limit);
   }
 
   @Get('my')

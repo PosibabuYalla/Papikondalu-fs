@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   SUPER_ADMIN
   ADMIN
+  AGENT
   USER
 }
 
@@ -94,11 +95,12 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  bookings       Booking[]
-  reviews        Review[]
-  notifications  Notification[]
-  savedPackages  SavedPackage[]
-  auditLogs      AuditLog[]
+  bookings        Booking[]
+  agentBookings   Booking[] @relation("AgentBookings")
+  reviews         Review[]
+  notifications   Notification[]
+  savedPackages   SavedPackage[]
+  auditLogs       AuditLog[]
 
   @@map("users")
 }
@@ -163,6 +165,8 @@ model Booking {
   bookingNumber     String        @unique
   userId            String
   packageId         String
+  bookedByAgentId   String?
+  paymentMode       String        @default("ONLINE")
   bookingDate       DateTime      @default(now())
   travelDate        DateTime
   numberOfPersons   Int
@@ -182,6 +186,7 @@ model Booking {
   updatedAt         DateTime      @updatedAt
 
   user        User               @relation(fields: [userId], references: [id])
+  agent       User?              @relation("AgentBookings", fields: [bookedByAgentId], references: [id])
   package     Package            @relation(fields: [packageId], references: [id])
   passengers  BookingPassenger[]
   payment     Payment?

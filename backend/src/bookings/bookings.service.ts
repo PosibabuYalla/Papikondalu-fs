@@ -1,11 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { CreateBookingDto, CancelBookingDto } from './dto/booking.dto';
+import { CreateBookingDto, AgentCreateBookingDto, CancelBookingDto } from './dto/booking.dto';
 import { paginate, createPaginatedResult } from '../common/utils/pagination.util';
 import { BookingStatus } from '@prisma/client';
 import * as QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class BookingsService {
@@ -19,7 +20,7 @@ export class BookingsService {
     return `${prefix}${datePart}${random}`;
   }
 
-  async create(userId: string, dto: CreateBookingDto) {
+  private async createBookingRecord(userId: string, dto: CreateBookingDto, agentId?: string) {
     const pkg = await this.prisma.package.findUnique({ where: { id: dto.packageId } });
     if (!pkg) throw new NotFoundException('Package not found');
     if (pkg.status !== 'ACTIVE') throw new BadRequestException('Package is not available');
@@ -27,7 +28,7 @@ export class BookingsService {
 
     const unitPrice = Number(pkg.discountedPrice || pkg.price);
     const totalAmount = unitPrice * dto.passengers.length;
-    const taxAmount = totalAmount * 0.05; // 5% GST
+    const taxAmount = totalAmount * 0.05;
     const finalAmount = totalAmount + taxAmount;
 
     const qrData = `PKD-BOOKING-${uuidv4()}`;
@@ -40,6 +41,8 @@ export class BookingsService {
           bookingNumber,
           userId,
           packageId: dto.packageId,
+          bookedByAgentId: agentId ?? null,
+          paymentMode: dto.paymentMode ?? (agentId ? 'CASH' : 'ONLINE'),
           travelDate: new Date(dto.travelDate),
           numberOfPersons: dto.passengers.length,
           totalAmount,
@@ -51,12 +54,10 @@ export class BookingsService {
         },
         include: { passengers: true, package: { select: { name: true, startingPoint: true, endingPoint: true } } },
       });
-
       await tx.package.update({ where: { id: dto.packageId }, data: { availableSeats: { decrement: dto.passengers.length } } });
       return created;
     });
 
-    // Send confirmation notification (fire & forget)
     this.notifications.sendBookingConfirmation(userId, {
       bookingNumber: booking.bookingNumber,
       packageName: booking.package.name,
@@ -66,6 +67,47 @@ export class BookingsService {
     }).catch(console.error);
 
     return booking;
+  }
+
+  async create(userId: string, dto: CreateBookingDto) {
+    return this.createBookingRecord(userId, dto);
+  }
+
+  async createAgentBooking(agentId: string, dto: AgentCreateBookingDto) {
+    // Find or create a guest user for the passenger
+    let passenger = await this.prisma.user.findUnique({ where: { email: dto.passengerEmail } });
+    if (!passenger) {
+      const tempPassword = await bcrypt.hash(uuidv4(), 10);
+      passenger = await this.prisma.user.create({
+        data: {
+          email: dto.passengerEmail,
+          name: dto.passengerName || dto.passengers[0]?.name || 'Guest',
+          phone: dto.passengerPhone,
+          passwordHash: tempPassword,
+          role: 'USER',
+          isEmailVerified: false,
+        },
+      });
+    }
+    return this.createBookingRecord(passenger.id, dto, agentId);
+  }
+
+  async findAgentBookings(agentId: string, page = 1, limit = 10) {
+    const { skip, take } = paginate({ page, limit });
+    const [data, total] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: { bookedByAgentId: agentId },
+        skip, take,
+        include: {
+          package: { include: { images: { where: { isPrimary: true } } } },
+          payment: true,
+          user: { select: { name: true, email: true, phone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.booking.count({ where: { bookedByAgentId: agentId } }),
+    ]);
+    return createPaginatedResult(data, total, page, limit);
   }
 
   async findUserBookings(userId: string, page = 1, limit = 10) {
@@ -121,7 +163,12 @@ export class BookingsService {
     const [data, total] = await Promise.all([
       this.prisma.booking.findMany({
         where, skip, take,
-        include: { user: { select: { name: true, email: true } }, package: { select: { name: true } }, payment: true },
+        include: {
+          user: { select: { name: true, email: true } },
+          agent: { select: { name: true, email: true } },
+          package: { select: { name: true } },
+          payment: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.booking.count({ where }),

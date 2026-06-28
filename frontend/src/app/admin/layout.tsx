@@ -6,15 +6,17 @@ import { AdminSidebar } from '@/components/admin/admin-sidebar';
 import { Loader2 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, _hasHydrated } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
+    if (!_hasHydrated) return;
     if (!isAuthenticated) { router.push('/login'); return; }
-    if (user && user.role === 'USER') { router.push('/dashboard'); }
-  }, [isAuthenticated, user]);
+    if (user && user.role === 'USER') { router.push('/dashboard'); return; }
+    if (user && user.role === 'AGENT') { router.push('/agent/dashboard'); }
+  }, [_hasHydrated, isAuthenticated, user]);
 
-  if (!isAuthenticated || !user || user.role === 'USER') {
+  if (!_hasHydrated || !isAuthenticated || !user || user.role === 'USER' || user.role === 'AGENT') {
     return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-godavari-500" /></div>;
   }
 

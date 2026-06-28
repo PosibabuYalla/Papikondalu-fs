@@ -4,21 +4,22 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
   LayoutDashboard, Package, Calendar, Users, Star, BarChart3,
-  CreditCard, Anchor, LogOut, Menu, X, MessageSquare,
+  CreditCard, Anchor, LogOut, Menu, X, MessageSquare, UserCog,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import { useLogout } from '@/hooks/useAuth';
 
 const navItems = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/packages', label: 'Packages', icon: Package },
-  { href: '/admin/bookings', label: 'Bookings', icon: Calendar },
-  { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/reviews', label: 'Reviews', icon: Star },
-  { href: '/admin/payments', label: 'Payments', icon: CreditCard },
-  { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/admin/contacts', label: 'Contacts', icon: MessageSquare },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/packages', label: 'Packages', icon: Package, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/bookings', label: 'Bookings', icon: Calendar, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/users', label: 'Users', icon: Users, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/agents', label: 'Agents', icon: UserCog, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/reviews', label: 'Reviews', icon: Star, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/payments', label: 'Payments', icon: CreditCard, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/reports', label: 'Reports', icon: BarChart3, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { href: '/admin/contacts', label: 'Contacts', icon: MessageSquare, roles: ['ADMIN', 'SUPER_ADMIN'] },
 ];
 
 export function AdminSidebar() {
@@ -61,7 +62,7 @@ export function AdminSidebar() {
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {navItems.map(({ href, label, icon: Icon }) => (
+          {navItems.filter(item => !item.roles || item.roles.includes(user?.role ?? '')).map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}

@@ -15,6 +15,13 @@ export class CreateBookingDto {
   @ApiProperty() @IsDateString() travelDate: string;
   @ApiProperty({ type: [PassengerDto] }) @IsArray() @ValidateNested({ each: true }) @Type(() => PassengerDto) passengers: PassengerDto[];
   @ApiPropertyOptional() @IsOptional() @IsString() specialRequests?: string;
+  @ApiPropertyOptional({ enum: ['ONLINE', 'CASH'] }) @IsOptional() @IsString() paymentMode?: string;
+}
+
+export class AgentCreateBookingDto extends CreateBookingDto {
+  @ApiProperty({ description: 'Passenger contact email' }) @IsEmail() passengerEmail: string;
+  @ApiPropertyOptional({ description: 'Passenger phone' }) @IsOptional() @IsMobilePhone('en-IN') passengerPhone?: string;
+  @ApiPropertyOptional({ description: 'Passenger full name for account' }) @IsOptional() @IsString() passengerName?: string;
 }
 
 export class CancelBookingDto {

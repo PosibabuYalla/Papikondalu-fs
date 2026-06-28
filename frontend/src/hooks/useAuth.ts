@@ -14,7 +14,9 @@ export function useLogin() {
       setTokens(data.accessToken, data.refreshToken);
       setUser(data.user);
       toast.success('Welcome back!');
-      router.push(data.user.role === 'USER' ? '/dashboard' : '/admin/dashboard');
+      if (data.user.role === 'USER') router.push('/dashboard');
+      else if (data.user.role === 'AGENT') router.push('/agent/dashboard');
+      else router.push('/admin/dashboard');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Login failed'),
   });

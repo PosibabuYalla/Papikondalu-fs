@@ -11,7 +11,7 @@ export interface User {
   city?: string;
   state?: string;
   pincode?: string;
-  role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+  role: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'AGENT';
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
   isActive: boolean;
@@ -84,6 +84,9 @@ export interface Booking {
   taxAmount: number;
   finalAmount: number;
   status: BookingStatus;
+  paymentMode?: string;
+  bookedByAgentId?: string;
+  agent?: { name: string; email: string };
   specialRequests?: string;
   qrCode?: string;
   ticketUrl?: string;
