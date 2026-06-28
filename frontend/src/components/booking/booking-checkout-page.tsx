@@ -103,10 +103,21 @@ export function BookingCheckoutPage({ packageId }: { packageId: string }) {
     setStep('payment');
   };
 
+  const loadRazorpayScript = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if ((window as any).Razorpay) return resolve();
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Razorpay'));
+      document.body.appendChild(script);
+    });
+
   const initiatePayment = async (method: PaymentMethod) => {
     if (!bookingId) return;
     setPayingWith(method);
     try {
+      await loadRazorpayScript();
       const { data: res } = await api.post(`/payments/create-order/${bookingId}`);
       const order = res.data;
       const display = buildRazorpayDisplay(method);
@@ -135,18 +146,12 @@ export function BookingCheckoutPage({ packageId }: { packageId: string }) {
         modal: { ondismiss: () => { toast('Payment cancelled'); setPayingWith(null); } },
         theme: { color: '#0087fb' },
       };
-      const win = window as any;
-      if (win.Razorpay) {
-        const rp = new win.Razorpay(options);
-        rp.on('payment.failed', (resp: any) => {
-          toast.error(`Payment failed: ${resp.error.description}`);
-          setPayingWith(null);
-        });
-        rp.open();
-      } else {
-        toast.error('Razorpay not loaded. Refresh the page.');
+      const rp = new (window as any).Razorpay(options);
+      rp.on('payment.failed', (resp: any) => {
+        toast.error(`Payment failed: ${resp.error.description}`);
         setPayingWith(null);
-      }
+      });
+      rp.open();
     } catch {
       toast.error('Failed to create payment order');
       setPayingWith(null);
@@ -167,8 +172,6 @@ export function BookingCheckoutPage({ packageId }: { packageId: string }) {
 
   return (
     <div className="min-h-screen pt-20 pb-10">
-      <script src="https://checkout.razorpay.com/v1/checkout.js" async />
-
       <div className="container mx-auto px-4 max-w-5xl">
         {/* Steps */}
         <div className="flex items-center gap-3 mb-8">

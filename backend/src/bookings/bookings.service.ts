@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PaymentsService } from '../payments/payments.service';
 import { CreateBookingDto, AgentCreateBookingDto, CancelBookingDto } from './dto/booking.dto';
 import { paginate, createPaginatedResult } from '../common/utils/pagination.util';
 import { BookingStatus } from '@prisma/client';
@@ -10,7 +11,11 @@ import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class BookingsService {
-  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+    private payments: PaymentsService,
+  ) {}
 
   private generateBookingNumber(): string {
     const date = new Date();
@@ -153,6 +158,10 @@ export class BookingsService {
       });
       await tx.package.update({ where: { id: booking.packageId }, data: { availableSeats: { increment: booking.numberOfPersons } } });
     });
+
+    if (refundAmount > 0) {
+      this.payments.processRefund(id, refundAmount).catch(console.error);
+    }
 
     return { message: 'Booking cancelled', refundAmount };
   }

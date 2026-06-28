@@ -105,6 +105,21 @@ export class PaymentsService {
     if (generated !== signature) throw new BadRequestException('Invalid webhook signature');
 
     const event = payload.event;
+
+    if (event === 'payment.captured') {
+      const entity = payload.payload.payment.entity;
+      const payment = await this.prisma.payment.findFirst({ where: { razorpayOrderId: entity.order_id } });
+      if (payment && payment.status !== PaymentStatus.SUCCESS) {
+        await this.prisma.$transaction(async (tx) => {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: { status: PaymentStatus.SUCCESS, razorpayPaymentId: entity.id, paidAt: new Date() },
+          });
+          await tx.booking.update({ where: { id: payment.bookingId }, data: { status: BookingStatus.CONFIRMED } });
+        });
+      }
+    }
+
     if (event === 'payment.failed') {
       const orderId = payload.payload.payment.entity.order_id;
       const payment = await this.prisma.payment.findFirst({ where: { razorpayOrderId: orderId } });
@@ -112,7 +127,40 @@ export class PaymentsService {
         await this.prisma.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED } });
       }
     }
+
+    if (event === 'refund.processed') {
+      const entity = payload.payload.refund.entity;
+      const payment = await this.prisma.payment.findFirst({ where: { razorpayPaymentId: entity.payment_id } });
+      if (payment) {
+        await this.prisma.payment.update({
+          where: { id: payment.id },
+          data: { refundStatus: 'processed', refundId: entity.id },
+        });
+      }
+    }
+
     return { received: true };
+  }
+
+  async processRefund(bookingId: string, amount: number) {
+    if (amount <= 0) return;
+    const payment = await this.prisma.payment.findUnique({ where: { bookingId } });
+    if (!payment || payment.status !== PaymentStatus.SUCCESS || !payment.razorpayPaymentId) return;
+
+    const refund = await this.razorpay.payments.refund(payment.razorpayPaymentId, {
+      amount: Math.round(amount * 100),
+    }) as any;
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: PaymentStatus.REFUNDED,
+        refundId: refund.id,
+        refundAmount: amount,
+        refundStatus: refund.status,
+        refundedAt: new Date(),
+      },
+    });
   }
 
   async getUserPayments(userId: string) {

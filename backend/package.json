@@ -5,6 +5,9 @@
   "author": "Papikondalu Tourism",
   "private": true,
   "license": "MIT",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\"",
