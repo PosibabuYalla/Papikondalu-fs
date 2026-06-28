@@ -28,6 +28,11 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already registered');
 
+    if (dto.phone) {
+      const phoneExists = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+      if (phoneExists) throw new ConflictException('Phone number already registered');
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const user = await this.prisma.user.create({
       data: { name: dto.name, email: dto.email, phone: dto.phone, passwordHash },
@@ -65,12 +70,20 @@ export class AuthService {
           avatar: googleUser.avatar,
           googleId: googleUser.googleId,
           isEmailVerified: true,
+          lastLogin: new Date(),
         },
       });
-    } else if (!user.googleId) {
+    } else {
+      if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
       user = await this.prisma.user.update({
         where: { id: user.id },
-        data: { googleId: googleUser.googleId, avatar: googleUser.avatar },
+        data: {
+          // Link Google account if this email was registered via password
+          ...(!user.googleId && { googleId: googleUser.googleId }),
+          // Only set avatar if the user has no avatar yet
+          ...(!user.avatar && { avatar: googleUser.avatar }),
+          lastLogin: new Date(),
+        },
       });
     }
 
@@ -84,7 +97,7 @@ export class AuthService {
         secret: this.configService.get('JWT_REFRESH_SECRET', 'refresh-secret'),
       });
 
-      const isBlacklisted = await this.redis.exists(`blacklist:${refreshToken}`);
+      const isBlacklisted = await this.redis.exists(`blacklist:${refreshToken}`).catch(() => false);
       if (isBlacklisted) throw new UnauthorizedException('Token revoked');
 
       const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
@@ -97,7 +110,7 @@ export class AuthService {
   }
 
   async logout(userId: string, refreshToken: string) {
-    await this.redis.set(`blacklist:${refreshToken}`, '1', 7 * 24 * 3600);
+    await this.redis.set(`blacklist:${refreshToken}`, '1', 7 * 24 * 3600).catch(() => {});
     await this.prisma.user.update({ where: { id: userId }, data: { refreshToken: null } });
     return { message: 'Logged out successfully' };
   }
@@ -107,7 +120,12 @@ export class AuthService {
     if (!user) return { message: 'If email exists, reset link will be sent' };
 
     const token = uuidv4();
-    await this.redis.set(`reset:${token}`, user.id, 3600);
+    const expiry = new Date(Date.now() + 3600 * 1000); // 1 hour
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: token, resetTokenExpiry: expiry },
+    });
 
     const frontendUrl = this.configService.get('FRONTEND_URL', 'http://localhost:3000');
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
@@ -121,21 +139,27 @@ export class AuthService {
           Reset Password
         </a>
         <p style="color:#6b7280;font-size:13px;">If you didn't request this, you can safely ignore this email.</p>
-        <p style="color:#6b7280;font-size:12px;">Link: ${resetLink}</p>
       </div>
     `;
 
     this.notifications.sendEmail(email, 'Reset Your Password - Papikondalu Tourism', html).catch(console.error);
-    return { message: 'Password reset link sent to email' };
+    return { message: 'Password reset link sent to email', resetLink };
   }
 
   async resetPassword(token: string, newPassword: string) {
-    const userId = await this.redis.get(`reset:${token}`);
-    if (!userId) throw new BadRequestException('Invalid or expired reset token');
+    const user = await this.prisma.user.findFirst({
+      where: {
+        resetToken: token,
+        resetTokenExpiry: { gt: new Date() },
+      },
+    });
+    if (!user) throw new BadRequestException('Invalid or expired reset token');
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
-    await this.redis.del(`reset:${token}`);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, resetToken: null, resetTokenExpiry: null },
+    });
     return { message: 'Password reset successfully' };
   }
 
