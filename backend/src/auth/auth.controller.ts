@@ -9,12 +9,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto, RefreshTokenDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('auth')
@@ -39,17 +39,19 @@ export class AuthController {
   }
 
   @Get('google')
-  @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth login' })
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Initiate Google OAuth login' })
   googleAuth() {}
 
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Google OAuth callback — handled by Passport' })
   async googleCallback(@Req() req: any, @Res() res: any) {
     const result = await this.authService.googleLogin(req.user);
     const frontendUrl = this.configService.get('FRONTEND_URL', 'http://localhost:3000');
+    // Route group (auth) in Next.js does not appear in the URL — path is /callback, not /auth/callback
     res.redirect(
-      `${frontendUrl}/auth/callback?token=${result.accessToken}&refresh=${result.refreshToken}`,
+      `${frontendUrl}/callback?token=${result.accessToken}&refresh=${result.refreshToken}`,
     );
   }
 
